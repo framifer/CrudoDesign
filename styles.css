@@ -43,7 +43,31 @@ html, body {
   font-size: 18px;
   letter-spacing: 0.5px;
   color: var(--accent);
+  cursor: pointer;
 }
+.brand:hover { opacity: 0.85; }
+
+/* Barra sottile per riaprire i comandi */
+#showTopbar {
+  display: none;
+  width: 100%;
+  min-height: 0;
+  height: 22px;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+#showTopbar:hover { background: var(--panel-2); }
+/* Quando la toolbar è nascosta */
+#app.topbar-hidden #topbar { display: none; }
+#app.topbar-hidden #showTopbar { display: block; }
 .tools, .actions { display: flex; gap: 6px; }
 .brush-settings {
   display: flex;
