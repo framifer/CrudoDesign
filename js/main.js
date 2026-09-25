@@ -205,7 +205,70 @@ let activePointerType = null;
 let strokePoints = [];
 let smoothedPressure = 0.5;
 
+// --- Multi-touch: pinch-to-zoom e pan con due dita ---
+const activeTouches = new Map(); // pointerId -> {x, y} (coordinate schermo)
+let pinch = null; // { startDist, startZoom, startCenter, startScroll }
+
+function screenPt(e) { return { x: e.clientX, y: e.clientY }; }
+
+// Annulla il tratto in corso ripristinando lo snapshot pre-tratto (nessuna traccia)
+function cancelCurrentStroke() {
+  if (state.drawing) {
+    const entry = state.undoStack.pop(); // rimuovi lo snapshot salvato a inizio tratto
+    if (entry) {
+      const frame = state.doc.frames[entry.frame];
+      const layer = frame && frame.layers.find((l) => l.id === entry.layerId);
+      if (layer) layer.ctx.putImageData(entry.snap, 0, 0);
+    }
+    state.drawing = false;
+    state.last = null;
+    strokePoints = [];
+    renderView();
+  }
+}
+
+function startPinch() {
+  const pts = [...activeTouches.values()];
+  if (pts.length < 2) return;
+  const [a, b] = pts;
+  pinch = {
+    startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+    startZoom: state.zoom,
+    startCenter: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    startScroll: { left: stageEl.scrollLeft, top: stageEl.scrollTop },
+  };
+}
+
+function updatePinch() {
+  const pts = [...activeTouches.values()];
+  if (!pinch || pts.length < 2) return;
+  const [a, b] = pts;
+  const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  // Zoom proporzionale alla variazione della distanza tra le dita
+  setZoom(pinch.startZoom * (dist / pinch.startDist));
+  // Pan: sposta la vista seguendo il movimento del centro delle due dita
+  stageEl.scrollLeft = pinch.startScroll.left - (center.x - pinch.startCenter.x);
+  stageEl.scrollTop = pinch.startScroll.top - (center.y - pinch.startCenter.y);
+}
+
 inputCanvas.addEventListener('pointerdown', (e) => {
+  // Traccia i tocchi per il rilevamento del pinch
+  if (e.pointerType === 'touch') {
+    activeTouches.set(e.pointerId, screenPt(e));
+    // Secondo dito: entra in modalità pinch e annulla qualsiasi tratto iniziato
+    if (activeTouches.size === 2) {
+      cancelCurrentStroke();
+      startPinch();
+      return;
+    }
+    // già in pinch (3+ dita): ignora
+    if (activeTouches.size > 2) return;
+  }
+
+  // Se siamo in pinch, non disegnare
+  if (pinch) return;
+
   // Palm rejection: se un pennino è già attivo, ignora i tocchi delle dita
   if (activePointerType === 'pen' && e.pointerType === 'touch') return;
   // Se arriva un pennino mentre disegnavi col dito, dai priorità al pennino
@@ -244,6 +307,13 @@ inputCanvas.addEventListener('pointerdown', (e) => {
 });
 
 inputCanvas.addEventListener('pointermove', (e) => {
+  // Aggiorna la posizione dei tocchi e gestisci il pinch
+  if (e.pointerType === 'touch' && activeTouches.has(e.pointerId)) {
+    activeTouches.set(e.pointerId, screenPt(e));
+    if (pinch) { e.preventDefault(); updatePinch(); return; }
+  }
+  if (pinch) return;
+
   if (!state.drawing) return;
   if (e.pointerId !== activePointerId) return; // ignora altri puntatori
   e.preventDefault();
@@ -258,6 +328,22 @@ inputCanvas.addEventListener('pointermove', (e) => {
 });
 
 function endStroke(e) {
+  // Gestione multi-touch: rimuovi il tocco solo su up/cancel (non su leave,
+  // che può scattare mentre il dito è ancora premuto durante il pinch)
+  const isRealEnd = e && (e.type === 'pointerup' || e.type === 'pointercancel');
+  if (isRealEnd && e.pointerType === 'touch' && activeTouches.has(e.pointerId)) {
+    activeTouches.delete(e.pointerId);
+    if (pinch && activeTouches.size < 2) {
+      // Fine del pinch: non riprendere a disegnare finché non si ricomincia da capo
+      pinch = null;
+      state.drawing = false;
+      state.last = null;
+      strokePoints = [];
+      return;
+    }
+  }
+  if (pinch) return;
+
   if (!state.drawing) return;
   if (e && e.pointerId != null && e.pointerId !== activePointerId) return;
   // traccia l'ultimo tratto rimanente fino all'ultimo punto
@@ -487,17 +573,102 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 document.getElementById('exportBtn').addEventListener('click', exportPNG);
 
 function exportPNG() {
-  const out = document.createElement('canvas');
-  out.width = W; out.height = H;
-  const octx = out.getContext('2d');
-  octx.fillStyle = '#ffffff';
-  octx.fillRect(0, 0, W, H);
-  Doc.composite(state.doc.frame, octx);
-  const a = document.createElement('a');
-  a.download = `crudodesign_frame${state.doc.activeFrame + 1}.png`;
-  a.href = out.toDataURL('image/png');
-  a.click();
+  // apre la finestra con le opzioni di esportazione
+  openExportModal();
 }
+
+// --- Esportazione immagine ad alta risoluzione (raster) ---
+const exportModal = document.getElementById('exportModal');
+const exportModalStatus = document.getElementById('exportModalStatus');
+
+function openExportModal() { exportModal.classList.add('active'); }
+function closeExportModal() { exportModal.classList.remove('active'); }
+
+document.getElementById('closeExport').addEventListener('click', closeExportModal);
+exportModal.addEventListener('click', (e) => { if (e.target === exportModal) closeExportModal(); });
+
+// Estensione file dal mime type
+function extFor(mime) {
+  return mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+}
+
+// Compone un frame (o un singolo layer) su un canvas alla scala richiesta
+function renderToCanvas({ scale, bg, frame, singleLayer }) {
+  const out = document.createElement('canvas');
+  out.width = W * scale;
+  out.height = H * scale;
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+  if (bg === 'white') {
+    octx.fillStyle = '#ffffff';
+    octx.fillRect(0, 0, out.width, out.height);
+  }
+  octx.scale(scale, scale);
+  if (singleLayer) {
+    if (singleLayer.visible) {
+      octx.globalAlpha = singleLayer.opacity;
+      octx.drawImage(singleLayer.canvas, 0, 0);
+      octx.globalAlpha = 1;
+    }
+  } else {
+    Doc.composite(frame, octx);
+  }
+  return out;
+}
+
+function downloadCanvas(canvas, filename, mime) {
+  return new Promise((resolve) => {
+    // JPEG non supporta trasparenza: qualità 0.92
+    const quality = (mime === 'image/jpeg' || mime === 'image/webp') ? 0.92 : undefined;
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); resolve(); }, 400);
+    }, mime, quality);
+  });
+}
+
+async function doExport() {
+  const scale = parseInt(document.getElementById('exportScale').value, 10);
+  let bg = document.getElementById('exportBg').value;
+  const mime = document.getElementById('exportFormat').value;
+  const content = document.getElementById('exportContent').value;
+  const ext = extFor(mime);
+  // JPEG non ha trasparenza: forziamo sfondo bianco
+  if (mime === 'image/jpeg' && bg === 'transparent') bg = 'white';
+
+  exportModalStatus.textContent = 'Esportazione…';
+
+  const base = (state.projectName && state.projectName !== 'Senza titolo')
+    ? state.projectName.replace(/[^\w\-]+/g, '_') : 'crudodesign';
+
+  if (content === 'frame') {
+    const c = renderToCanvas({ scale, bg, frame: state.doc.frame });
+    await downloadCanvas(c, `${base}_frame${state.doc.activeFrame + 1}.${ext}`, mime);
+  } else if (content === 'layers') {
+    const layers = state.doc.frame.layers;
+    for (let i = 0; i < layers.length; i++) {
+      exportModalStatus.textContent = `Layer ${i + 1}/${layers.length}…`;
+      const c = renderToCanvas({ scale, bg, singleLayer: layers[i] });
+      await downloadCanvas(c, `${base}_frame${state.doc.activeFrame + 1}_layer${i + 1}.${ext}`, mime);
+    }
+  } else if (content === 'frames') {
+    for (let i = 0; i < state.doc.frames.length; i++) {
+      exportModalStatus.textContent = `Frame ${i + 1}/${state.doc.frames.length}…`;
+      const c = renderToCanvas({ scale, bg, frame: state.doc.frames[i] });
+      const num = String(i + 1).padStart(3, '0');
+      await downloadCanvas(c, `${base}_frame${num}.${ext}`, mime);
+    }
+  }
+
+  exportModalStatus.textContent = 'Fatto ✓';
+  setTimeout(() => { exportModalStatus.textContent = ''; closeExportModal(); }, 1200);
+}
+document.getElementById('doExport').addEventListener('click', doExport);
 
 // --- Pannello Layer ---
 const layerList = document.getElementById('layerList');
