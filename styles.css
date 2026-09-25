@@ -92,14 +92,14 @@ input[type="number"] { width: 56px; }
 
 /* Main layout */
 #main {
-  display: grid;
-  grid-template-columns: 210px 1fr 200px;
+  display: flex;
   min-height: 0;
+  min-width: 0;
 }
-/* Colonne comprimibili: quando un pannello è nascosto la canvas si allarga */
-#main.no-colors { grid-template-columns: 0 1fr 200px; }
-#main.no-layers { grid-template-columns: 210px 1fr 0; }
-#main.no-colors.no-layers { grid-template-columns: 0 1fr 0; }
+#colorPanel { width: 210px; flex: 0 0 210px; }
+#layerPanel { width: 92px; flex: 0 0 92px; }
+#stage { flex: 1 1 auto; min-width: 0; }
+/* Pannelli comprimibili */
 #main.no-colors #colorPanel { display: none; }
 #main.no-layers #layerPanel { display: none; }
 #toggleColors.active, #toggleLayers.active { border-color: var(--accent); background: var(--accent-2); }
@@ -112,7 +112,7 @@ aside {
   overflow-y: auto;
 }
 #colorPanel { border-left: none; }
-#layerPanel { border-right: none; }
+#layerPanel { border-right: none; padding: 8px 6px; }
 
 .panel-title {
   font-size: 12px;
@@ -157,15 +157,29 @@ aside {
     linear-gradient(-45deg, transparent 75%, #26272d 75%);
   background-size: 24px 24px;
   background-position: 0 0, 0 12px, 12px -12px, -12px 0;
-  overflow: hidden;
+  overflow: auto;
   min-height: 0;
+  padding: 20px;
+}
+.zoom-tools { align-items: center; }
+.zoom-tools button { min-width: 34px; font-weight: 700; }
+#zoomLabel {
+  font-size: 12px; color: var(--muted);
+  min-width: 42px; text-align: center;
 }
 #canvasWrap {
   position: relative;
   box-shadow: 0 10px 40px rgba(0,0,0,0.5);
   background: #fff;
+  margin: auto;
+  flex: 0 0 auto;
+  /* il contenuto interno (stack) è scalato via transform ma mantiene
+     il suo box di layout 1280x800: lo ritagliamo alla dimensione reale */
+  overflow: hidden;
 }
-#canvasStack { position: relative; }
+#canvasStack {
+  position: relative;
+}
 #canvasStack canvas {
   position: absolute;
   top: 0; left: 0;
@@ -199,17 +213,17 @@ aside {
 .layer-item {
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 6px;
+  padding: 4px 5px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   cursor: pointer;
 }
 .layer-item.active { border-color: var(--accent); }
-.layer-item .vis { cursor: pointer; }
-.layer-item .name { flex: 1; font-size: 13px; }
-.layer-item .del { min-width: 28px; min-height: 28px; padding: 2px; font-size: 12px; }
+.layer-item .vis { cursor: pointer; font-size: 14px; }
+.layer-item .name { flex: 1; font-size: 13px; font-weight: 600; text-align: center; }
+.layer-item .del { min-width: 22px; min-height: 22px; padding: 0; font-size: 11px; }
 
 /* Timeline */
 #timeline {
