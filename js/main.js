@@ -27,6 +27,7 @@ const state = {
   scale: 1,
   fitScale: 1,
   zoom: 1,
+  rotation: 0,
   undoStack: [],
   redoStack: [],
   projectId: null,
@@ -75,14 +76,22 @@ function fitStage() {
   const availW = rect.width - padX;
   const availH = rect.height - padY;
   if (availW <= 0 || availH <= 0) return; // stage non ancora dimensionato
-  const sx = availW / W;
-  const sy = availH / H;
-  // scala base che fa entrare il foglio nello spazio disponibile
+
+  // Quando il foglio è ruotato di 90°/270°, il suo ingombro ha larghezza e
+  // altezza scambiate: teniamone conto per farlo entrare comunque.
+  const rotated = (state.rotation % 180) !== 0;
+  const effW = rotated ? H : W;
+  const effH = rotated ? W : H;
+  const sx = availW / effW;
+  const sy = availH / effH;
   state.fitScale = Math.max(0.05, Math.min(sx, sy, 1));
-  // scala finale = adattamento * zoom manuale
   state.scale = state.fitScale * state.zoom;
+
+  // Il canvasWrap mantiene le dimensioni reali del foglio (scalate);
+  // la rotazione è applicata al wrap attorno al suo centro.
   canvasWrap.style.width = W * state.scale + 'px';
   canvasWrap.style.height = H * state.scale + 'px';
+  canvasWrap.style.transform = state.rotation ? `rotate(${state.rotation}deg)` : '';
   stack.style.transform = `scale(${state.scale})`;
   stack.style.transformOrigin = 'top left';
   const zl = document.getElementById('zoomLabel');
@@ -137,14 +146,30 @@ function renderAll() {
 let strokeRect = null;
 
 function readRect() {
-  strokeRect = inputCanvas.getBoundingClientRect();
+  // Usiamo il rettangolo del wrap: con la rotazione l'inputCanvas interno
+  // avrebbe un bounding box ruotato e poco affidabile.
+  strokeRect = canvasWrap.getBoundingClientRect();
 }
 
 function getPoint(e) {
-  const rect = strokeRect || inputCanvas.getBoundingClientRect();
-  // coordinate in sotto-pixel (nessun arrotondamento): massima precisione
-  const x = (e.clientX - rect.left) / state.scale;
-  const y = (e.clientY - rect.top) / state.scale;
+  const rect = strokeRect || canvasWrap.getBoundingClientRect();
+  // posizione del tocco rispetto al centro del wrap (in pixel schermo)
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  let dx = e.clientX - cx;
+  let dy = e.clientY - cy;
+
+  // Annulla la rotazione della vista: ruotiamo il punto di -rotation
+  // così otteniamo le coordinate nel sistema NON ruotato del foglio.
+  const rad = (-state.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const rx = dx * cos - dy * sin;
+  const ry = dx * sin + dy * cos;
+
+  // rx/ry sono relativi al centro nello spazio non ruotato e scalato:
+  // il wrap non ruotato ha dimensioni W*scale × H*scale
+  const x = (rx + (W * state.scale) / 2) / state.scale;
+  const y = (ry + (H * state.scale) / 2) / state.scale;
 
   // Pressione: usiamo il valore reale del pennino.
   let pressure = e.pressure;
@@ -209,6 +234,12 @@ let smoothedPressure = 0.5;
 const activeTouches = new Map(); // pointerId -> {x, y} (coordinate schermo)
 let pinch = null; // { startDist, startZoom, startCenter, startScroll }
 
+// --- Doppio tap = annulla (undo) ---
+let lastTapTime = 0;
+let lastTapPos = { x: 0, y: 0 };
+let tapMoved = false;
+let firstTapDrew = false; // il tap precedente ha disegnato qualcosa
+
 function screenPt(e) { return { x: e.clientX, y: e.clientY }; }
 
 // Annulla il tratto in corso ripristinando lo snapshot pre-tratto (nessuna traccia)
@@ -236,6 +267,8 @@ function startPinch() {
     startZoom: state.zoom,
     startCenter: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
     startScroll: { left: stageEl.scrollLeft, top: stageEl.scrollTop },
+    startAngle: Math.atan2(b.y - a.y, b.x - a.x),
+    rotated: false, // evita rotazioni multiple nello stesso gesto
   };
 }
 
@@ -250,6 +283,28 @@ function updatePinch() {
   // Pan: sposta la vista seguendo il movimento del centro delle due dita
   stageEl.scrollLeft = pinch.startScroll.left - (center.x - pinch.startCenter.x);
   stageEl.scrollTop = pinch.startScroll.top - (center.y - pinch.startCenter.y);
+
+  // Twist: se le due dita ruotano oltre una soglia, ruota il foglio di 90°
+  // in senso orario (una sola volta per gesto).
+  if (!pinch.rotated) {
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    let delta = angle - pinch.startAngle;
+    // normalizza in -PI..PI
+    while (delta > Math.PI) delta -= 2 * Math.PI;
+    while (delta < -Math.PI) delta += 2 * Math.PI;
+    const THRESHOLD = Math.PI / 6; // ~30° di twist
+    if (Math.abs(delta) > THRESHOLD) {
+      rotateCanvas90();
+      pinch.rotated = true; // consumato: niente rotazioni ripetute nello stesso gesto
+    }
+  }
+}
+
+// Ruota la VISTA del foglio di 90° in senso orario (0→90→180→270→0)
+function rotateCanvas90() {
+  state.rotation = (state.rotation + 90) % 360;
+  fitStage();
+  renderAll();
 }
 
 inputCanvas.addEventListener('pointerdown', (e) => {
@@ -268,6 +323,28 @@ inputCanvas.addEventListener('pointerdown', (e) => {
 
   // Se siamo in pinch, non disegnare
   if (pinch) return;
+
+  // --- Rilevamento doppio tap = annulla ---
+  // Vale per un singolo tocco/pennino (non durante un gesto a due dita).
+  if (activeTouches.size <= 1) {
+    const now = Date.now();
+    const ddx = e.clientX - lastTapPos.x;
+    const ddy = e.clientY - lastTapPos.y;
+    const near = (ddx * ddx + ddy * ddy) < (30 * 30); // entro ~30px
+    if (now - lastTapTime < 300 && near && !tapMoved) {
+      // Doppio tap = annulla. Il primo tap ha lasciato un puntino e uno
+      // snapshot: annulliamo quello (rimuove il puntino) e poi annulliamo
+      // di nuovo per disfare l'azione reale precedente dell'utente.
+      undo();            // rimuove il puntino accidentale del primo tap
+      if (firstTapDrew) undo(); // disfa l'azione precedente vera
+      lastTapTime = 0;   // reset per evitare tripli tap a catena
+      firstTapDrew = false;
+      return;
+    }
+    lastTapTime = now;
+    lastTapPos = { x: e.clientX, y: e.clientY };
+    tapMoved = false;
+  }
 
   // Palm rejection: se un pennino è già attivo, ignora i tocchi delle dita
   if (activePointerType === 'pen' && e.pointerType === 'touch') return;
@@ -304,6 +381,7 @@ inputCanvas.addEventListener('pointerdown', (e) => {
   // punto singolo (tap): disegna un piccolo dot
   stampDot(p);
   renderView();
+  firstTapDrew = true; // questo tap ha disegnato: c'è un'azione da annullare
 });
 
 inputCanvas.addEventListener('pointermove', (e) => {
@@ -317,6 +395,7 @@ inputCanvas.addEventListener('pointermove', (e) => {
   if (!state.drawing) return;
   if (e.pointerId !== activePointerId) return; // ignora altri puntatori
   e.preventDefault();
+  tapMoved = true; // c'è stato movimento: non è un tap
 
   // Eventi "coalesced": tutti i campioni ad alta frequenza tra due frame
   // (i pennini campionano a 120-240Hz: così non perdiamo precisione).
