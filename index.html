@@ -19,9 +19,12 @@
 </head>
 <body>
   <div id="app">
+    <!-- Barra sottile per riaprire la toolbar (visibile solo quando è nascosta) -->
+    <button id="showTopbar" title="Mostra i comandi">▾ CrudoDesign</button>
+
     <!-- Barra strumenti in alto -->
     <header id="topbar">
-      <div class="brand">CrudoDesign</div>
+      <div class="brand" id="brand" title="Nascondi i comandi">CrudoDesign</div>
       <div class="tools">
         <button class="tool active" data-tool="brush" title="Pennello">✏️</button>
         <button class="tool" data-tool="eraser" title="Gomma">🧽</button>
