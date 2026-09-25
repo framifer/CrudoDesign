@@ -1,0 +1,16 @@
+{
+  "name": "crudodesign",
+  "version": "1.0.0",
+  "description": "App di disegno e animazione frame-by-frame (PWA offline).",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "icons": "node gen-icons.cjs",
+    "serve": "python3 -m http.server 3000"
+  },
+  "keywords": ["disegno", "animazione", "pwa", "canvas"],
+  "license": "MIT",
+  "devDependencies": {
+    "sharp": "0.33.5"
+  }
+}

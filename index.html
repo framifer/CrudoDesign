@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>CrudoDesign</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2b6cff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CrudoDesign" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Barra strumenti in alto -->
+    <header id="topbar">
+      <div class="brand">CrudoDesign</div>
+      <div class="tools">
+        <button class="tool active" data-tool="brush" title="Pennello">✏️</button>
+        <button class="tool" data-tool="eraser" title="Gomma">🧽</button>
+        <button class="tool" data-tool="fill" title="Riempi con colore">🪣</button>
+        <button class="tool" data-tool="eyedropper" title="Contagocce">💧</button>
+      </div>
+      <div class="tools">
+        <button id="toggleTimeline" title="Mostra/nascondi timeline animazione">🎞️</button>
+      </div>
+      <div class="brush-settings">
+        <label>Pennello
+          <select id="brushType">
+            <option value="round">Tondo</option>
+            <option value="calligraphy">Calligrafico</option>
+            <option value="marker">Pennarello</option>
+            <option value="pencil">Matita</option>
+            <option value="airbrush">Aerografo</option>
+            <option value="oil">Pittura ad olio</option>
+            <option value="charcoal">Carboncino</option>
+          </select>
+        </label>
+        <label>Dimensione
+          <input type="range" id="brushSize" min="1" max="120" value="8" />
+          <span id="brushSizeVal">8</span>
+        </label>
+        <label>Opacità
+          <input type="range" id="brushOpacity" min="1" max="100" value="100" />
+          <span id="brushOpacityVal">100</span>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="usePressure" checked /> Pressione pennino
+        </label>
+      </div>
+      <label class="cam-opacity" id="camOpacityWrap">📷
+        <input type="range" id="camOpacity" min="10" max="90" value="45" />
+      </label>
+      <div class="actions">
+        <button id="saveBtn" title="Salva progetto">💾</button>
+        <button id="projectsBtn" title="Apri progetti">📂</button>
+        <button id="cameraBtn" title="Camera di riferimento (ricalca)">📷</button>
+        <button id="undoBtn" title="Annulla">↶</button>
+        <button id="redoBtn" title="Ripeti">↷</button>
+        <button id="clearBtn" title="Pulisci frame">🗑️</button>
+        <button id="exportBtn" title="Esporta PNG">⬇️ PNG</button>
+      </div>
+    </header>
+
+    <!-- Finestra Progetti -->
+    <div id="projectsModal" class="modal">
+      <div class="modal-box">
+        <div class="modal-head">
+          <span>Progetti salvati</span>
+          <button id="closeProjects" title="Chiudi">✕</button>
+        </div>
+        <div class="modal-actions">
+          <button id="newProject">＋ Nuovo progetto</button>
+          <button id="importProject">⬆️ Importa .crudo</button>
+          <input type="file" id="importFile" accept=".crudo,application/json" hidden />
+        </div>
+        <ul id="projectList" class="project-list"></ul>
+      </div>
+    </div>
+
+    <div id="main">
+      <!-- Pannello colori a sinistra -->
+      <aside id="colorPanel">
+        <input type="color" id="colorPicker" value="#222222" />
+        <div id="swatches" class="swatches"></div>
+
+        <div class="panel-title">Tavolozza (mescola)</div>
+        <canvas id="mixCanvas" width="180" height="120"></canvas>
+        <div class="mix-controls">
+          <label>Quantità
+            <input type="range" id="mixAmount" min="5" max="100" value="40" />
+          </label>
+          <button id="mixClear">Pulisci tavolozza</button>
+        </div>
+        <div class="current-color">
+          <span>Attuale</span>
+          <div id="currentColor"></div>
+        </div>
+      </aside>
+
+      <!-- Area di disegno al centro -->
+      <section id="stage">
+        <div id="canvasWrap">
+          <div id="canvasStack"></div>
+        </div>
+      </section>
+
+      <!-- Pannello layer a destra -->
+      <aside id="layerPanel">
+        <div class="panel-title">
+          Layer
+          <button id="addLayer" title="Nuovo layer">＋</button>
+        </div>
+        <ul id="layerList"></ul>
+      </aside>
+    </div>
+
+    <!-- Timeline animazione -->
+    <footer id="timeline">
+      <div id="timelineBody">
+        <div class="timeline-controls">
+          <button id="addFrame" title="Nuovo frame">＋ Frame</button>
+          <button id="dupFrame" title="Duplica frame">⧉ Duplica</button>
+          <button id="delFrame" title="Elimina frame">🗑️ Frame</button>
+          <span class="divider"></span>
+          <button id="playBtn" title="Play/Pausa">▶️</button>
+          <label>FPS
+            <input type="number" id="fps" min="1" max="30" value="8" />
+          </label>
+          <label class="checkbox onion">
+            <input type="checkbox" id="onionSkin" checked /> Onion skin
+          </label>
+          <span class="divider"></span>
+          <button id="exportVideoBtn" title="Esporta animazione come video">🎬 Esporta video</button>
+          <span id="exportStatus" class="export-status"></span>
+        </div>
+        <div id="frameList" class="frame-list"></div>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+  <script>
+    // Registrazione del Service Worker per l'uso offline
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then((reg) => console.log('Service Worker registrato:', reg.scope))
+          .catch((err) => console.warn('Registrazione SW fallita:', err));
+      });
+    }
+  </script>
+</body>
+</html>

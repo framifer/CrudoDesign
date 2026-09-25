@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <!-- Sfondo -->
+  <rect width="32" height="32" fill="#2b6cff"/>
+  <rect x="1" y="1" width="30" height="30" fill="#1e1f24"/>
+
+  <!-- Tavolozza (palette) pixel art -->
+  <!-- corpo tavolozza -->
+  <g>
+    <rect x="4"  y="16" width="14" height="2" fill="#c9a06a"/>
+    <rect x="3"  y="18" width="17" height="2" fill="#c9a06a"/>
+    <rect x="3"  y="20" width="18" height="2" fill="#b8895a"/>
+    <rect x="4"  y="22" width="16" height="2" fill="#b8895a"/>
+    <rect x="6"  y="24" width="12" height="2" fill="#a3743f"/>
+    <!-- foro per il pollice -->
+    <rect x="14" y="20" width="3" height="3" fill="#1e1f24"/>
+  </g>
+  <!-- macchie di colore sulla tavolozza -->
+  <rect x="5"  y="18" width="2" height="2" fill="#ed1c24"/>
+  <rect x="8"  y="17" width="2" height="2" fill="#fff200"/>
+  <rect x="11" y="18" width="2" height="2" fill="#22b14c"/>
+  <rect x="6"  y="21" width="2" height="2" fill="#00a2e8"/>
+  <rect x="9"  y="21" width="2" height="2" fill="#a349a4"/>
+
+  <!-- Pennello pixel art (diagonale) -->
+  <!-- manico -->
+  <rect x="22" y="6"  width="2" height="2" fill="#8a5a2b"/>
+  <rect x="21" y="8"  width="2" height="2" fill="#8a5a2b"/>
+  <rect x="20" y="10" width="2" height="2" fill="#a06a33"/>
+  <rect x="19" y="12" width="2" height="2" fill="#a06a33"/>
+  <!-- ghiera metallica -->
+  <rect x="18" y="14" width="2" height="2" fill="#c3c3c3"/>
+  <rect x="17" y="15" width="2" height="2" fill="#e6e6e6"/>
+  <!-- setole con colore -->
+  <rect x="15" y="16" width="3" height="3" fill="#ed1c24"/>
+  <rect x="14" y="18" width="3" height="2" fill="#ff7f27"/>
+  <!-- punta di colore -->
+  <rect x="13" y="20" width="2" height="2" fill="#fff200"/>
+</svg>
