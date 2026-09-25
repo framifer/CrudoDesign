@@ -96,6 +96,50 @@
       </div>
     </div>
 
+    <!-- Finestra Esporta immagine -->
+    <div id="exportModal" class="modal">
+      <div class="modal-box">
+        <div class="modal-head">
+          <span>Esporta immagine</span>
+          <button id="closeExport" title="Chiudi">✕</button>
+        </div>
+        <div class="export-options">
+          <label>Risoluzione
+            <select id="exportScale">
+              <option value="1">1× (1280×800)</option>
+              <option value="2" selected>2× (2560×1600)</option>
+              <option value="4">4× (5120×3200)</option>
+              <option value="8">8× (10240×6400)</option>
+            </select>
+          </label>
+          <label>Sfondo
+            <select id="exportBg">
+              <option value="white" selected>Bianco</option>
+              <option value="transparent">Trasparente (PNG)</option>
+            </select>
+          </label>
+          <label>Formato
+            <select id="exportFormat">
+              <option value="image/png" selected>PNG (senza perdita)</option>
+              <option value="image/jpeg">JPEG (più leggero)</option>
+              <option value="image/webp">WebP</option>
+            </select>
+          </label>
+          <label>Contenuto
+            <select id="exportContent">
+              <option value="frame" selected>Frame corrente (unito)</option>
+              <option value="layers">Ogni layer separato</option>
+              <option value="frames">Tutti i frame</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="doExport">⬇️ Esporta</button>
+          <span id="exportModalStatus" class="export-status"></span>
+        </div>
+      </div>
+    </div>
+
     <div id="main">
       <!-- Pannello colori a sinistra -->
       <aside id="colorPanel">
