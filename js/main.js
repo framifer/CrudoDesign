@@ -654,11 +654,22 @@ toggleTimelineBtn.addEventListener('click', () => {
 const appEl = document.getElementById('app');
 const brandEl = document.getElementById('brand');
 const showTopbarBtn = document.getElementById('showTopbar');
-brandEl.addEventListener('click', () => {
+
+// Usiamo pointerup (immediato e uniforme su dito/pennino/mouse) invece di
+// click, che su mobile può essere ritardato o soppresso da touch-action.
+function bindTap(el, handler) {
+  el.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handler();
+  });
+}
+
+bindTap(brandEl, () => {
   appEl.classList.add('topbar-hidden');
   renderAll(); // il foglio si riadatta via ResizeObserver
 });
-showTopbarBtn.addEventListener('click', () => {
+bindTap(showTopbarBtn, () => {
   appEl.classList.remove('topbar-hidden');
   renderAll();
 });
