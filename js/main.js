@@ -520,6 +520,19 @@ toggleTimelineBtn.addEventListener('click', () => {
   renderAll(); // il ridimensionamento del foglio è gestito dal ResizeObserver
 });
 
+// --- Nascondi/mostra l'intera barra dei comandi ---
+const appEl = document.getElementById('app');
+const brandEl = document.getElementById('brand');
+const showTopbarBtn = document.getElementById('showTopbar');
+brandEl.addEventListener('click', () => {
+  appEl.classList.add('topbar-hidden');
+  renderAll(); // il foglio si riadatta via ResizeObserver
+});
+showTopbarBtn.addEventListener('click', () => {
+  appEl.classList.remove('topbar-hidden');
+  renderAll();
+});
+
 // --- Toggle pannelli Colori e Layer ---
 const mainEl = document.getElementById('main');
 const toggleColorsBtn = document.getElementById('toggleColors');
