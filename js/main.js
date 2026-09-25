@@ -25,6 +25,8 @@ const state = {
   fps: 8,
   onion: true,
   scale: 1,
+  fitScale: 1,
+  zoom: 1,
   undoStack: [],
   redoStack: [],
   projectId: null,
@@ -62,18 +64,45 @@ stack.style.width = W + 'px';
 stack.style.height = H + 'px';
 
 // --- Adatta lo zoom allo spazio disponibile ---
+const stageEl = document.getElementById('stage');
+
 function fitStage() {
-  const stage = document.getElementById('stage');
-  const pad = 40;
-  const sx = (stage.clientWidth - pad) / W;
-  const sy = (stage.clientHeight - pad) / H;
-  state.scale = Math.min(sx, sy, 1);
+  // getBoundingClientRect è affidabile e tiene conto del padding reale
+  const rect = stageEl.getBoundingClientRect();
+  const cs = getComputedStyle(stageEl);
+  const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  const availW = rect.width - padX;
+  const availH = rect.height - padY;
+  if (availW <= 0 || availH <= 0) return; // stage non ancora dimensionato
+  const sx = availW / W;
+  const sy = availH / H;
+  // scala base che fa entrare il foglio nello spazio disponibile
+  state.fitScale = Math.max(0.05, Math.min(sx, sy, 1));
+  // scala finale = adattamento * zoom manuale
+  state.scale = state.fitScale * state.zoom;
   canvasWrap.style.width = W * state.scale + 'px';
   canvasWrap.style.height = H * state.scale + 'px';
   stack.style.transform = `scale(${state.scale})`;
   stack.style.transformOrigin = 'top left';
+  const zl = document.getElementById('zoomLabel');
+  if (zl) zl.textContent = Math.round(state.scale * 100) + '%';
 }
-window.addEventListener('resize', fitStage);
+
+// Ricalcola automaticamente ogni volta che lo stage cambia dimensione
+// (apertura/chiusura pannelli, ridimensionamento finestra) — senza problemi di timing.
+if ('ResizeObserver' in window) {
+  const ro = new ResizeObserver(() => fitStage());
+  ro.observe(stageEl);
+} else {
+  window.addEventListener('resize', () => requestAnimationFrame(fitStage));
+}
+
+// Zoom manuale
+function setZoom(z) {
+  state.zoom = Math.max(0.25, Math.min(8, z));
+  fitStage();
+}
 
 // --- Rendering ---
 function renderView() {
@@ -363,7 +392,7 @@ function refreshLayers() {
 
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = l.name;
+    name.textContent = (i + 1); // solo il numero del layer
 
     const del = document.createElement('button');
     del.className = 'del';
@@ -488,8 +517,7 @@ toggleTimelineBtn.classList.add('active'); // aperta all'avvio
 toggleTimelineBtn.addEventListener('click', () => {
   const collapsed = timelineEl.classList.toggle('collapsed');
   toggleTimelineBtn.classList.toggle('active', !collapsed);
-  fitStage(); // ricalcola lo zoom con il nuovo spazio disponibile
-  renderAll();
+  renderAll(); // il ridimensionamento del foglio è gestito dal ResizeObserver
 });
 
 // --- Toggle pannelli Colori e Layer ---
@@ -500,15 +528,18 @@ const toggleLayersBtn = document.getElementById('toggleLayers');
 toggleColorsBtn.addEventListener('click', () => {
   const hidden = mainEl.classList.toggle('no-colors');
   toggleColorsBtn.classList.toggle('active', !hidden);
-  fitStage();
   renderAll();
 });
 toggleLayersBtn.addEventListener('click', () => {
   const hidden = mainEl.classList.toggle('no-layers');
   toggleLayersBtn.classList.toggle('active', !hidden);
-  fitStage();
   renderAll();
 });
+
+// --- Zoom in / out del foglio ---
+document.getElementById('zoomInBtn').addEventListener('click', () => setZoom(state.zoom * 1.25));
+document.getElementById('zoomOutBtn').addEventListener('click', () => setZoom(state.zoom / 1.25));
+document.getElementById('zoomResetBtn').addEventListener('click', () => setZoom(1));
 
 // --- Export video dell'animazione ---
 const exportVideoBtn = document.getElementById('exportVideoBtn');
@@ -819,6 +850,7 @@ function init() {
   refreshLayers();
   refreshFrames();
   fitStage();
+  setZoom(state.zoom); // aggiorna l'etichetta dello zoom
   renderAll();
   // ripristina l'ultimo progetto aperto (se presente)
   loadLastProject().catch((e) => console.error('Ripristino progetto fallito:', e));
