@@ -131,16 +131,38 @@ function renderAll() {
   renderView();
 }
 
-// --- Coordinate da evento pointer al canvas ---
+// --- Coordinate da evento pointer al canvas (massima precisione) ---
+// La bounding box viene letta una volta a inizio tratto (evita letture
+// ripetute che introducono errori e costi durante il movimento).
+let strokeRect = null;
+
+function readRect() {
+  strokeRect = inputCanvas.getBoundingClientRect();
+}
+
 function getPoint(e) {
-  const rect = inputCanvas.getBoundingClientRect();
+  const rect = strokeRect || inputCanvas.getBoundingClientRect();
+  // coordinate in sotto-pixel (nessun arrotondamento): massima precisione
   const x = (e.clientX - rect.left) / state.scale;
   const y = (e.clientY - rect.top) / state.scale;
+
+  // Pressione: usiamo il valore reale del pennino.
   let pressure = e.pressure;
-  // Il dito/mouse spesso riporta 0 o 0.5; normalizziamo
-  if (e.pointerType === 'mouse') pressure = 0.5;
-  if (pressure === 0) pressure = 0.5;
-  return { x, y, pressure };
+  if (e.pointerType === 'mouse') {
+    pressure = 0.5; // il mouse non ha pressione
+  } else if (e.pointerType === 'touch' && (pressure === 0 || pressure === 0.5)) {
+    // molti touchscreen non riportano pressione affidabile
+    pressure = 0.5;
+  } else if (pressure === 0) {
+    pressure = 0.5; // fallback
+  }
+  return {
+    x, y,
+    pressure,
+    tiltX: e.tiltX || 0,
+    tiltY: e.tiltY || 0,
+    pointerType: e.pointerType,
+  };
 }
 
 // --- Undo/Redo (snapshot del layer attivo) ---
@@ -175,10 +197,28 @@ function redo() {
   if (entry) restoreSnapshot(entry, false);
 }
 
-// --- Gestione input di disegno ---
+// --- Gestione input di disegno (ottimizzata per il pennino) ---
+// Palm rejection: se sta scrivendo un pennino, ignoriamo il tocco delle dita.
+let activePointerId = null;
+let activePointerType = null;
+// Buffer dei punti del tratto corrente per lo smoothing a curve quadratiche
+let strokePoints = [];
+let smoothedPressure = 0.5;
+
 inputCanvas.addEventListener('pointerdown', (e) => {
+  // Palm rejection: se un pennino è già attivo, ignora i tocchi delle dita
+  if (activePointerType === 'pen' && e.pointerType === 'touch') return;
+  // Se arriva un pennino mentre disegnavi col dito, dai priorità al pennino
+  if (e.pointerType === 'pen' && activePointerType === 'touch') {
+    state.drawing = false;
+  }
+
   e.preventDefault();
+  readRect();
   inputCanvas.setPointerCapture(e.pointerId);
+  activePointerId = e.pointerId;
+  activePointerType = e.pointerType;
+
   const p = getPoint(e);
 
   if (state.tool === 'fill') {
@@ -194,33 +234,120 @@ inputCanvas.addEventListener('pointerdown', (e) => {
   }
 
   state.drawing = true;
+  smoothedPressure = p.pressure;
+  strokePoints = [p];
   state.last = p;
   pushUndo();
-  strokeTo(p); // punto singolo
+  // punto singolo (tap): disegna un piccolo dot
+  stampDot(p);
+  renderView();
 });
 
 inputCanvas.addEventListener('pointermove', (e) => {
   if (!state.drawing) return;
+  if (e.pointerId !== activePointerId) return; // ignora altri puntatori
   e.preventDefault();
-  // coalesced events per tratti fluidi ad alta frequenza (pennino)
-  const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-  for (const ev of events) {
-    const p = getPoint(ev);
-    strokeTo(p);
+
+  // Eventi "coalesced": tutti i campioni ad alta frequenza tra due frame
+  // (i pennini campionano a 120-240Hz: così non perdiamo precisione).
+  const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for (const ev of coalesced) {
+    addStrokePoint(getPoint(ev));
   }
+  renderView(); // un solo render per batch di eventi
 });
 
 function endStroke(e) {
   if (!state.drawing) return;
+  if (e && e.pointerId != null && e.pointerId !== activePointerId) return;
+  // traccia l'ultimo tratto rimanente fino all'ultimo punto
+  flushStrokeTail();
+  renderView();
   state.drawing = false;
   state.last = null;
+  strokePoints = [];
+  activePointerId = null;
+  activePointerType = null;
   refreshFrameThumbs();
 }
 inputCanvas.addEventListener('pointerup', endStroke);
 inputCanvas.addEventListener('pointercancel', endStroke);
 inputCanvas.addEventListener('pointerleave', endStroke);
 
-function strokeTo(p) {
+// Aggiunge un punto al tratto applicando smoothing a curva quadratica.
+// Disegna un segmento fluido dal punto medio precedente al nuovo punto medio,
+// usando il punto reale come punto di controllo della curva.
+function addStrokePoint(p) {
+  // filtra micro-tremolii: ignora spostamenti sub-pixel insignificanti
+  const prev = strokePoints[strokePoints.length - 1];
+  if (prev) {
+    const dx = p.x - prev.x, dy = p.y - prev.y;
+    if (dx * dx + dy * dy < 0.09) { // < 0.3px, aggiorna solo la pressione
+      prev.pressure = p.pressure;
+      return;
+    }
+  }
+  // pressione ammorbidita per evitare scatti di spessore
+  smoothedPressure = smoothedPressure * 0.5 + p.pressure * 0.5;
+  p = { ...p, pressure: smoothedPressure };
+  strokePoints.push(p);
+
+  const n = strokePoints.length;
+  if (n < 3) {
+    // all'inizio traccia diretto
+    drawSmoothSegment(strokePoints[n - 2], strokePoints[n - 2], strokePoints[n - 1]);
+    return;
+  }
+  const p0 = strokePoints[n - 3];
+  const p1 = strokePoints[n - 2];
+  const p2 = strokePoints[n - 1];
+  const m1 = midpoint(p0, p1);
+  const m2 = midpoint(p1, p2);
+  // curva quadratica da m1 a m2 con p1 come controllo
+  drawQuadratic(m1, p1, m2);
+  state.last = m2;
+}
+
+// Alla fine del tratto, completa fino all'ultimo punto reale.
+function flushStrokeTail() {
+  const n = strokePoints.length;
+  if (n >= 2) {
+    const p1 = strokePoints[n - 2];
+    const p2 = strokePoints[n - 1];
+    const m1 = midpoint(p1, p2);
+    drawQuadratic(m1, p2, p2);
+  }
+}
+
+function midpoint(a, b) {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+    pressure: (a.pressure + b.pressure) / 2,
+  };
+}
+
+// Suddivide una curva quadratica in piccoli segmenti e li passa al pennello.
+function drawQuadratic(start, control, end) {
+  const dist = Math.hypot(end.x - start.x, end.y - start.y) +
+               Math.hypot(control.x - start.x, control.y - start.y);
+  const steps = Math.max(2, Math.ceil(dist / 2)); // ~1 campione ogni 2px
+  let prev = start;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const it = 1 - t;
+    const pt = {
+      x: it * it * start.x + 2 * it * t * control.x + t * t * end.x,
+      y: it * it * start.y + 2 * it * t * control.y + t * t * end.y,
+      pressure: it * it * start.pressure + 2 * it * t * control.pressure + t * t * end.pressure,
+    };
+    drawSmoothSegment(prev, prev, pt);
+    prev = pt;
+  }
+}
+
+// Disegna un segmento con il pennello corrente (gestisce anche la gomma).
+function drawSmoothSegment(_p0, from, to) {
   const ctx = state.doc.layer.ctx;
   const opts = {
     type: state.brushType,
@@ -232,13 +359,16 @@ function strokeTo(p) {
   if (state.tool === 'eraser') {
     ctx.save();
     ctx.globalCompositeOperation = 'destination-out';
-    drawSegment(ctx, state.last || p, p, { ...opts, color: '#000', opacity: 1 });
+    drawSegment(ctx, from, to, { ...opts, color: '#000', opacity: 1 });
     ctx.restore();
   } else {
-    drawSegment(ctx, state.last || p, p, opts);
+    drawSegment(ctx, from, to, opts);
   }
-  state.last = p;
-  renderView();
+}
+
+// Piccolo punto iniziale (tap senza movimento)
+function stampDot(p) {
+  drawSmoothSegment(p, p, p);
 }
 
 function pickColor(x, y) {
