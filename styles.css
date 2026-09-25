@@ -348,3 +348,19 @@ aside {
 .project-item .info .name { font-size: 14px; }
 .project-item .info .date { font-size: 11px; color: var(--muted); }
 .project-item.empty { color: var(--muted); justify-content: center; border-style: dashed; }
+
+/* Opzioni di esportazione */
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.export-options label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  gap: 12px;
+}
+.export-options select { min-width: 200px; }
