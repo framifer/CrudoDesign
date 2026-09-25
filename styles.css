@@ -44,15 +44,19 @@ html, body {
   letter-spacing: 0.5px;
   color: var(--accent);
   cursor: pointer;
+  touch-action: manipulation;
+  padding: 4px 6px;
+  border-radius: 6px;
 }
 .brand:hover { opacity: 0.85; }
+.brand:active { background: var(--panel-2); }
 
 /* Barra sottile per riaprire i comandi */
 #showTopbar {
   display: none;
   width: 100%;
   min-height: 0;
-  height: 22px;
+  height: 26px;
   padding: 0;
   border-radius: 0;
   border: none;
@@ -63,8 +67,10 @@ html, body {
   font-weight: 700;
   letter-spacing: 0.5px;
   cursor: pointer;
+  touch-action: manipulation;
 }
 #showTopbar:hover { background: var(--panel-2); }
+#showTopbar:active { background: var(--panel-2); }
 /* Quando la toolbar è nascosta */
 #app.topbar-hidden #topbar { display: none; }
 #app.topbar-hidden #showTopbar { display: block; }
