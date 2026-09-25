@@ -96,6 +96,13 @@ input[type="number"] { width: 56px; }
   grid-template-columns: 210px 1fr 200px;
   min-height: 0;
 }
+/* Colonne comprimibili: quando un pannello è nascosto la canvas si allarga */
+#main.no-colors { grid-template-columns: 0 1fr 200px; }
+#main.no-layers { grid-template-columns: 210px 1fr 0; }
+#main.no-colors.no-layers { grid-template-columns: 0 1fr 0; }
+#main.no-colors #colorPanel { display: none; }
+#main.no-layers #layerPanel { display: none; }
+#toggleColors.active, #toggleLayers.active { border-color: var(--accent); background: var(--accent-2); }
 
 aside {
   background: var(--panel);
