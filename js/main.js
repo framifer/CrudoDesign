@@ -492,6 +492,24 @@ toggleTimelineBtn.addEventListener('click', () => {
   renderAll();
 });
 
+// --- Toggle pannelli Colori e Layer ---
+const mainEl = document.getElementById('main');
+const toggleColorsBtn = document.getElementById('toggleColors');
+const toggleLayersBtn = document.getElementById('toggleLayers');
+
+toggleColorsBtn.addEventListener('click', () => {
+  const hidden = mainEl.classList.toggle('no-colors');
+  toggleColorsBtn.classList.toggle('active', !hidden);
+  fitStage();
+  renderAll();
+});
+toggleLayersBtn.addEventListener('click', () => {
+  const hidden = mainEl.classList.toggle('no-layers');
+  toggleLayersBtn.classList.toggle('active', !hidden);
+  fitStage();
+  renderAll();
+});
+
 // --- Export video dell'animazione ---
 const exportVideoBtn = document.getElementById('exportVideoBtn');
 const exportStatus = document.getElementById('exportStatus');
