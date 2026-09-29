@@ -2,7 +2,7 @@
 // Strategia: precache di tutti i file al primo caricamento (app shell),
 // poi "cache-first" così l'app funziona senza rete.
 
-const CACHE = 'crudodesign-v14';
+const CACHE = 'crudodesign-v16';
 
 // Tutti i file necessari all'app (percorsi relativi allo scope).
 const ASSETS = [
@@ -16,6 +16,7 @@ const ASSETS = [
   './js/fill.js',
   './js/color.js',
   './js/storage.js',
+  './js/gifenc.js',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
