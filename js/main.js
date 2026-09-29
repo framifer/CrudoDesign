@@ -1,5 +1,5 @@
 // CrudoDesign — modulo principale
-import { Doc } from './doc.js';
+import { Doc, createLayer } from './doc.js';
 import { drawSegment } from './brush.js';
 import { floodFill } from './fill.js';
 import { hexToRgb, rgbToHex, DEFAULT_SWATCHES } from './color.js';
@@ -1023,6 +1023,124 @@ async function exportVideo() {
   renderAll();
 }
 exportVideoBtn.addEventListener('click', exportVideo);
+
+// --- Auto-animazione: genera frame trasformando quello corrente ---
+const autoAnimModal = document.getElementById('autoAnimModal');
+const autoAnimStatus = document.getElementById('autoAnimStatus');
+
+document.getElementById('autoAnimBtn').addEventListener('click', () => {
+  autoAnimModal.classList.add('active');
+});
+document.getElementById('closeAutoAnim').addEventListener('click', () => {
+  autoAnimModal.classList.remove('active');
+});
+autoAnimModal.addEventListener('click', (e) => {
+  if (e.target === autoAnimModal) autoAnimModal.classList.remove('active');
+});
+
+// Appiattisce il frame corrente in una singola immagine (canvas)
+function flattenCurrentFrame() {
+  const flat = document.createElement('canvas');
+  flat.width = W; flat.height = H;
+  Doc.composite(state.doc.frame, flat.getContext('2d'));
+  return flat;
+}
+
+// Easing: da progressione lineare t (0..1) a valore addolcito
+function easeValue(t, mode) {
+  if (mode === 'ease') {
+    // ease-in-out cubica
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+  return t; // lineare
+}
+
+// Disegna l'immagine sorgente su un contesto applicando la trasformazione
+function drawTransformed(ctx, img, type, progress, amount) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  const cx = W / 2, cy = H / 2;
+  switch (type) {
+    case 'translate': {
+      // scorre da sinistra verso destra di una frazione della larghezza
+      const dx = (progress - 0.5) * 2 * (W * amount);
+      ctx.translate(dx, 0);
+      ctx.drawImage(img, 0, 0);
+      break;
+    }
+    case 'rotate': {
+      const ang = progress * amount * 2 * Math.PI; // fino a più giri con amount alto
+      ctx.translate(cx, cy);
+      ctx.rotate(ang);
+      ctx.translate(-cx, -cy);
+      ctx.drawImage(img, 0, 0);
+      break;
+    }
+    case 'scale': {
+      // da 1 a (1 + amount) e utilizzo di progress
+      const s = 1 + (progress * amount * 2);
+      ctx.translate(cx, cy);
+      ctx.scale(s, s);
+      ctx.translate(-cx, -cy);
+      ctx.drawImage(img, 0, 0);
+      break;
+    }
+    case 'fade': {
+      ctx.globalAlpha = 1 - progress; // svanisce
+      ctx.drawImage(img, 0, 0);
+      break;
+    }
+    default:
+      ctx.drawImage(img, 0, 0);
+  }
+  ctx.restore();
+}
+
+function doAutoAnim() {
+  const type = document.getElementById('animType').value;
+  const nFrames = Math.max(2, Math.min(120, parseInt(document.getElementById('animFrames').value, 10) || 12));
+  const amount = (parseInt(document.getElementById('animAmount').value, 10) || 60) / 100;
+  const easing = document.getElementById('animEasing').value;
+  const pingpong = document.getElementById('animPingpong').checked;
+  const replace = document.getElementById('animReplace').checked;
+
+  const src = flattenCurrentFrame();
+
+  // Costruisce l'elenco delle progressioni (0..1), eventualmente in ping-pong
+  const progresses = [];
+  for (let i = 0; i < nFrames; i++) {
+    progresses.push(easeValue(i / (nFrames - 1), easing));
+  }
+  if (pingpong) {
+    for (let i = nFrames - 2; i >= 1; i--) progresses.push(progresses[i]);
+  }
+
+  // Genera i frame come oggetti {layers, activeLayer}
+  const newFrames = progresses.map((prog) => {
+    const layer = createLayer(W, H, 'Anim');
+    drawTransformed(layer.ctx, src, type, prog, amount);
+    return { layers: [layer], activeLayer: 0 };
+  });
+
+  if (replace) {
+    state.doc.frames = newFrames;
+    state.doc.activeFrame = 0;
+  } else {
+    // inserisce i nuovi frame dopo quello corrente
+    state.doc.frames.splice(state.doc.activeFrame + 1, 0, ...newFrames);
+    state.doc.activeFrame += 1;
+  }
+
+  refreshLayers();
+  refreshFrames();
+  renderAll();
+  autoAnimStatus.textContent = `Creati ${newFrames.length} frame ✓`;
+  setTimeout(() => {
+    autoAnimStatus.textContent = '';
+    autoAnimModal.classList.remove('active');
+  }, 1200);
+}
+document.getElementById('doAutoAnim').addEventListener('click', doAutoAnim);
 
 // --- Camera di riferimento (ricalco) ---
 let camStream = null;
