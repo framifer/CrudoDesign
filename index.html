@@ -140,6 +140,36 @@
       </div>
     </div>
 
+    <!-- Finestra Esporta animazione -->
+    <div id="animExportModal" class="modal">
+      <div class="modal-box">
+        <div class="modal-head">
+          <span>Esporta animazione</span>
+          <button id="closeAnimExport" title="Chiudi">✕</button>
+        </div>
+        <div class="export-options">
+          <label>Formato
+            <select id="animExportFormat">
+              <option value="video" selected>Video (MP4 se supportato, altrimenti WebM)</option>
+              <option value="gif">GIF animata</option>
+              <option value="project">Progetto (.crudo)</option>
+            </select>
+          </label>
+          <label id="animGifScaleRow">Dimensione GIF
+            <select id="animGifScale">
+              <option value="1" selected>100% (1280×800)</option>
+              <option value="0.5">50% (640×400)</option>
+              <option value="0.35">35% (448×280)</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="doAnimExport">⬇️ Esporta</button>
+          <span id="animExportStatus" class="export-status"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- Finestra Auto-animazione -->
     <div id="autoAnimModal" class="modal">
       <div class="modal-box">
@@ -150,10 +180,33 @@
         <div class="export-options">
           <label>Movimento
             <select id="animType">
-              <option value="translate">Spostamento</option>
-              <option value="rotate">Rotazione</option>
-              <option value="scale">Zoom (ingrandisci/rimpicciolisci)</option>
-              <option value="fade">Dissolvenza</option>
+              <optgroup label="Base">
+                <option value="translate">Spostamento</option>
+                <option value="driftDiagonal">Deriva diagonale</option>
+                <option value="rotate">Rotazione</option>
+                <option value="scale">Zoom</option>
+                <option value="fade">Dissolvenza (svanisce)</option>
+              </optgroup>
+              <optgroup label="Movimenti">
+                <option value="bounce">Rimbalzo</option>
+                <option value="swing">Oscillazione (dondolio)</option>
+                <option value="shake">Tremolio (shake)</option>
+                <option value="float">Fluttuazione</option>
+              </optgroup>
+              <optgroup label="Comparsa">
+                <option value="fadeIn">Comparsa (fade-in)</option>
+                <option value="pop">Pop (ingresso a molla)</option>
+                <option value="slideIn">Scorrimento in entrata</option>
+              </optgroup>
+              <optgroup label="Vivi">
+                <option value="pulse">Pulsazione (battito)</option>
+                <option value="blink">Lampeggio</option>
+                <option value="wobble">Ondeggiamento (wobble)</option>
+              </optgroup>
+              <optgroup label="Combinati">
+                <option value="vortex">Vortice</option>
+                <option value="panZoom">Panoramica + zoom</option>
+              </optgroup>
             </select>
           </label>
           <label>Numero di frame
@@ -236,7 +289,7 @@
           </label>
           <span class="divider"></span>
           <button id="autoAnimBtn" title="Genera automaticamente frame animati">✨ Auto-anima</button>
-          <button id="exportVideoBtn" title="Esporta animazione come video">🎬 Esporta video</button>
+          <button id="exportVideoBtn" title="Esporta l'animazione (video, GIF o progetto)">🎬 Esporta animazione</button>
           <span id="exportStatus" class="export-status"></span>
         </div>
         <div id="frameList" class="frame-list"></div>
