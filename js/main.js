@@ -3,6 +3,7 @@ import { Doc, createLayer } from './doc.js';
 import { drawSegment } from './brush.js';
 import { floodFill } from './fill.js';
 import { hexToRgb, rgbToHex, DEFAULT_SWATCHES } from './color.js';
+import { encodeGIF } from './gifenc.js';
 import {
   saveProject, loadProject, listProjects, deleteProject,
   exportToFile, importFromFile, deserializeInto, newId,
@@ -969,13 +970,16 @@ async function exportVideo() {
   rec.width = W; rec.height = H;
   const rctx = rec.getContext('2d');
 
-  // Scegli un mimeType supportato
+  // Scegli un mimeType supportato: prova prima MP4/H.264, poi WebM
   const candidates = [
+    'video/mp4;codecs=h264',
+    'video/mp4',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
   ];
   const mimeType = candidates.find((t) => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 
   const stream = rec.captureStream(state.fps);
   const chunks = [];
@@ -1012,17 +1016,93 @@ async function exportVideo() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'crudodesign_animazione.webm';
+  a.download = `crudodesign_animazione.${ext}`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-  exportStatus.textContent = 'Video salvato ✓';
+  exportStatus.textContent = `Video salvato (${ext.toUpperCase()}) ✓`;
   setTimeout(() => { exportStatus.textContent = ''; }, 4000);
   exportVideoBtn.disabled = false;
   exporting = false;
   renderAll();
 }
-exportVideoBtn.addEventListener('click', exportVideo);
+// --- Chooser di esportazione animazione (video / GIF / progetto) ---
+const animExportModal = document.getElementById('animExportModal');
+const animExportStatus = document.getElementById('animExportStatus');
+const animExportFormat = document.getElementById('animExportFormat');
+const animGifScaleRow = document.getElementById('animGifScaleRow');
+
+exportVideoBtn.addEventListener('click', () => {
+  animExportModal.classList.add('active');
+  updateAnimExportUI();
+});
+document.getElementById('closeAnimExport').addEventListener('click', () => {
+  animExportModal.classList.remove('active');
+});
+animExportModal.addEventListener('click', (e) => {
+  if (e.target === animExportModal) animExportModal.classList.remove('active');
+});
+animExportFormat.addEventListener('change', updateAnimExportUI);
+
+function updateAnimExportUI() {
+  // mostra l'opzione dimensione solo per la GIF
+  animGifScaleRow.style.display = animExportFormat.value === 'gif' ? 'flex' : 'none';
+}
+
+document.getElementById('doAnimExport').addEventListener('click', async () => {
+  const fmt = animExportFormat.value;
+  if (fmt === 'video') {
+    animExportModal.classList.remove('active');
+    await exportVideo();
+  } else if (fmt === 'gif') {
+    await exportGIF();
+  } else if (fmt === 'project') {
+    // riusa l'export progetto esistente
+    exportToFile(state.projectName || 'progetto', state.doc);
+    animExportStatus.textContent = 'Progetto esportato ✓';
+    setTimeout(() => { animExportStatus.textContent = ''; animExportModal.classList.remove('active'); }, 1200);
+  }
+});
+
+// --- Export GIF animata (encoder integrato, offline) ---
+async function exportGIF() {
+  if (exporting) return;
+  exporting = true;
+  const scale = parseFloat(document.getElementById('animGifScale').value) || 1;
+  const gw = Math.round(W * scale);
+  const gh = Math.round(H * scale);
+  animExportStatus.textContent = 'Creazione GIF…';
+
+  const tmp = document.createElement('canvas');
+  tmp.width = gw; tmp.height = gh;
+  const tctx = tmp.getContext('2d');
+
+  const imgs = [];
+  for (let i = 0; i < state.doc.frames.length; i++) {
+    tctx.fillStyle = '#ffffff';
+    tctx.fillRect(0, 0, gw, gh);
+    tctx.save();
+    tctx.scale(scale, scale);
+    Doc.composite(state.doc.frames[i], tctx);
+    tctx.restore();
+    imgs.push(tctx.getImageData(0, 0, gw, gh));
+    animExportStatus.textContent = `Creazione GIF… ${i + 1}/${state.doc.frames.length}`;
+    await new Promise((r) => setTimeout(r, 0)); // lascia respirare la UI
+  }
+
+  const delayCs = Math.max(2, Math.round(100 / state.fps)); // centesimi di secondo
+  const blob = encodeGIF(imgs, gw, gh, delayCs);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'crudodesign_animazione.gif';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  animExportStatus.textContent = 'GIF salvata ✓';
+  setTimeout(() => { animExportStatus.textContent = ''; animExportModal.classList.remove('active'); }, 1400);
+  exporting = false;
+}
 
 // --- Auto-animazione: genera frame trasformando quello corrente ---
 const autoAnimModal = document.getElementById('autoAnimModal');
@@ -1055,43 +1135,97 @@ function easeValue(t, mode) {
   return t; // lineare
 }
 
-// Disegna l'immagine sorgente su un contesto applicando la trasformazione
-function drawTransformed(ctx, img, type, progress, amount) {
+// Disegna l'immagine sorgente su un contesto applicando la trasformazione.
+// progress: valore addolcito 0..1 (per movimenti direzionali)
+// t: progressione lineare 0..1 (per effetti ciclici basati su fase)
+function drawTransformed(ctx, img, type, progress, amount, t) {
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   const cx = W / 2, cy = H / 2;
+  const draw = () => ctx.drawImage(img, 0, 0);
+  const TAU = Math.PI * 2;
+
   switch (type) {
     case 'translate': {
-      // scorre da sinistra verso destra di una frazione della larghezza
       const dx = (progress - 0.5) * 2 * (W * amount);
-      ctx.translate(dx, 0);
-      ctx.drawImage(img, 0, 0);
-      break;
+      ctx.translate(dx, 0); draw(); break;
+    }
+    case 'driftDiagonal': {
+      const d = (progress - 0.5) * 2 * amount;
+      ctx.translate(d * W, d * H); draw(); break;
     }
     case 'rotate': {
-      const ang = progress * amount * 2 * Math.PI; // fino a più giri con amount alto
-      ctx.translate(cx, cy);
-      ctx.rotate(ang);
-      ctx.translate(-cx, -cy);
-      ctx.drawImage(img, 0, 0);
-      break;
+      ctx.translate(cx, cy); ctx.rotate(progress * amount * TAU); ctx.translate(-cx, -cy); draw(); break;
     }
     case 'scale': {
-      // da 1 a (1 + amount) e utilizzo di progress
-      const s = 1 + (progress * amount * 2);
-      ctx.translate(cx, cy);
-      ctx.scale(s, s);
-      ctx.translate(-cx, -cy);
-      ctx.drawImage(img, 0, 0);
-      break;
+      const s = 1 + progress * amount * 2;
+      ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy); draw(); break;
     }
     case 'fade': {
-      ctx.globalAlpha = 1 - progress; // svanisce
-      ctx.drawImage(img, 0, 0);
-      break;
+      ctx.globalAlpha = 1 - progress; draw(); break;
+    }
+    case 'fadeIn': {
+      ctx.globalAlpha = progress; draw(); break;
+    }
+    case 'bounce': {
+      // rimbalzo verticale: parabola che tocca il "suolo" più volte
+      const h = amount * H * 0.5;
+      const bounce = Math.abs(Math.sin(t * Math.PI * 2)); // 0 in alto/terra
+      ctx.translate(0, -h * bounce); draw(); break;
+    }
+    case 'swing': {
+      // dondolio come pendolo attorno al bordo superiore
+      const ang = Math.sin(t * TAU) * amount * (Math.PI / 4);
+      ctx.translate(cx, 0); ctx.rotate(ang); ctx.translate(-cx, 0); draw(); break;
+    }
+    case 'shake': {
+      const mag = amount * 30;
+      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag); draw(); break;
+    }
+    case 'float': {
+      const dy = Math.sin(t * TAU) * amount * H * 0.15;
+      ctx.translate(0, dy); draw(); break;
+    }
+    case 'pop': {
+      // entra da piccolo a grande con leggero sovra-scatto (molla)
+      const overshoot = 1.7;
+      const p = progress;
+      const s = p < 1 ? 1 + (overshoot + 1) * Math.pow(p - 1, 3) + overshoot * Math.pow(p - 1, 2) : 1;
+      const sc = Math.max(0.01, s);
+      ctx.globalAlpha = Math.min(1, p * 2);
+      ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy); draw(); break;
+    }
+    case 'slideIn': {
+      const dx = (1 - progress) * -W; // entra da sinistra
+      ctx.translate(dx, 0); draw(); break;
+    }
+    case 'pulse': {
+      const s = 1 + Math.sin(t * TAU) * amount * 0.3;
+      ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy); draw(); break;
+    }
+    case 'blink': {
+      // acceso/spento a intermittenza
+      ctx.globalAlpha = (Math.sin(t * TAU * 3) > 0) ? 1 : 0.1; draw(); break;
+    }
+    case 'wobble': {
+      // deformazione tipo gelatina: scale non uniforme oscillante
+      const w = Math.sin(t * TAU) * amount * 0.2;
+      ctx.translate(cx, cy); ctx.scale(1 + w, 1 - w); ctx.translate(-cx, -cy); draw(); break;
+    }
+    case 'vortex': {
+      const ang = t * TAU * amount * 2;
+      const s = 1 - amount * 0.5 * Math.sin(t * Math.PI); // pulsa mentre gira
+      ctx.translate(cx, cy); ctx.rotate(ang); ctx.scale(Math.max(0.05, s), Math.max(0.05, s)); ctx.translate(-cx, -cy); draw(); break;
+    }
+    case 'panZoom': {
+      // effetto cinematografico: zoom-in mentre trasla
+      const s = 1 + progress * amount;
+      const dx = (progress - 0.5) * amount * W * 0.4;
+      ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
+      ctx.translate(dx, 0); draw(); break;
     }
     default:
-      ctx.drawImage(img, 0, 0);
+      draw();
   }
   ctx.restore();
 }
@@ -1106,19 +1240,20 @@ function doAutoAnim() {
 
   const src = flattenCurrentFrame();
 
-  // Costruisce l'elenco delle progressioni (0..1), eventualmente in ping-pong
-  const progresses = [];
+  // Costruisce l'elenco dei frame: {prog (addolcito), t (lineare 0..1)}
+  const steps = [];
   for (let i = 0; i < nFrames; i++) {
-    progresses.push(easeValue(i / (nFrames - 1), easing));
+    const lin = i / (nFrames - 1);
+    steps.push({ prog: easeValue(lin, easing), t: lin });
   }
   if (pingpong) {
-    for (let i = nFrames - 2; i >= 1; i--) progresses.push(progresses[i]);
+    for (let i = nFrames - 2; i >= 1; i--) steps.push(steps[i]);
   }
 
   // Genera i frame come oggetti {layers, activeLayer}
-  const newFrames = progresses.map((prog) => {
+  const newFrames = steps.map((s) => {
     const layer = createLayer(W, H, 'Anim');
-    drawTransformed(layer.ctx, src, type, prog, amount);
+    drawTransformed(layer.ctx, src, type, s.prog, amount, s.t);
     return { layers: [layer], activeLayer: 0 };
   });
 
