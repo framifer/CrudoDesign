@@ -140,6 +140,48 @@
       </div>
     </div>
 
+    <!-- Finestra Auto-animazione -->
+    <div id="autoAnimModal" class="modal">
+      <div class="modal-box">
+        <div class="modal-head">
+          <span>Auto-animazione</span>
+          <button id="closeAutoAnim" title="Chiudi">✕</button>
+        </div>
+        <div class="export-options">
+          <label>Movimento
+            <select id="animType">
+              <option value="translate">Spostamento</option>
+              <option value="rotate">Rotazione</option>
+              <option value="scale">Zoom (ingrandisci/rimpicciolisci)</option>
+              <option value="fade">Dissolvenza</option>
+            </select>
+          </label>
+          <label>Numero di frame
+            <input type="number" id="animFrames" min="2" max="120" value="12" />
+          </label>
+          <label>Intensità
+            <input type="range" id="animAmount" min="10" max="100" value="60" />
+          </label>
+          <label>Andamento
+            <select id="animEasing">
+              <option value="linear">Lineare</option>
+              <option value="ease" selected>Morbido (ease-in-out)</option>
+            </select>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="animPingpong" /> Loop ping-pong (avanti e indietro)
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="animReplace" /> Sostituisci i frame esistenti
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="doAutoAnim">✨ Genera</button>
+          <span id="autoAnimStatus" class="export-status"></span>
+        </div>
+      </div>
+    </div>
+
     <div id="main">
       <!-- Pannello colori a sinistra -->
       <aside id="colorPanel">
@@ -193,6 +235,7 @@
             <input type="checkbox" id="onionSkin" checked /> Onion skin
           </label>
           <span class="divider"></span>
+          <button id="autoAnimBtn" title="Genera automaticamente frame animati">✨ Auto-anima</button>
           <button id="exportVideoBtn" title="Esporta animazione come video">🎬 Esporta video</button>
           <span id="exportStatus" class="export-status"></span>
         </div>
